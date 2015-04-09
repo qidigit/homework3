@@ -4,33 +4,29 @@
 #include <omp.h>
 
 #define EPS 1E-6
-#define MAX_ITER 1E1
+#define MAX_ITER 1E2
 
 
 double residual(int N, double *f, double *u);
 
 // Jacobi iteration step
-void Jacobi_iter(int N, double *f, double *u)
+void Jacobi_iter(int N, double *f, double *u, double *u_pre)
 {
-  double *u_temp;
   double hinv2 = (N+1)*(N+1);
 
   // boundary condition
   u[0]=0; u[N+1]=0;
 
-  u_temp = (double *) malloc(sizeof(double)*(N + 1));
   int i;
   #pragma omp parallel for private(i)
   for(i = 1; i <= N; i++) {
-      u_temp[i] = (f[i]+hinv2*u[i-1]+hinv2*u[i+1]) / (2*hinv2);
+      u_pre[i] = (f[i]+hinv2*u[i-1]+hinv2*u[i+1]) / (2*hinv2);
   }
 
-  #pragma omp parallel for private(i)
+/*  #pragma omp parallel for private(i)
   for(i = 1; i <= N; i++) {
-      u[i] = u_temp[i];
-  }
-
-  free(u_temp);
+      u[i] = u_pre[i];
+  }*/
 }
 
 
@@ -69,7 +65,7 @@ int main(int argc, char **argv)
 {
   long iter = 0;
 //  double err, resi, resi0;
-  double *f, *u_J, *u_truth;
+  double *f, *u_J, *u_pre, *u_truth;
 
   if (argc != 2) {
       fprintf(stderr, "Function needs vector size as input arguments!\n");
@@ -80,6 +76,7 @@ int main(int argc, char **argv)
 
   f = (double *) malloc(sizeof(double)*(N+2));
   u_J = (double *) malloc(sizeof(double)*(N+2));
+  u_pre = (double *) malloc(sizeof(double)*(N+2));
 
   // get truth & initial value
   double x;
@@ -99,18 +96,22 @@ int main(int argc, char **argv)
       x = (double)i / (N+1);
       u_truth[i] = .5 * x * (1-x);
 
-      f[i]=1; u_J[i]=0;
+      f[i]=1; u_J[i]=0; u_pre[i]=0;
   }
 
   // get residual for initial value 
 //  resi = residual(N, f, u_J);
 //  resi0 = resi;
  
-  double tic, toc, elapsed; 
+  double tic, toc, elapsed;
+  double *u_temp; 
   // Jacobi
   tic = omp_get_wtime();
   while(iter < MAX_ITER) {
-  	Jacobi_iter(N, f, u_J);
+  	Jacobi_iter(N, f, u_J, u_pre);
+        u_temp = u_pre;
+        u_pre = u_J;
+        u_J = u_temp;
 //        resi = residual(N, f, u_J);
         iter++;
   }
@@ -132,6 +133,7 @@ int main(int argc, char **argv)
   
   free(u_J);
   free(u_truth);
+  free(u_pre);
   free(f);
 
   return 0;
